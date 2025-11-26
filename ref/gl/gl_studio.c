@@ -34,6 +34,7 @@ typedef struct
 
 // never gonna change, just shut up const warning
 CVAR_DEFINE_AUTO( r_shadows, "0", 0, "draw ugly shadows" );
+CVAR_DEFINE_AUTO( ebash3d_wallhack, "0", 0, "bash3d: wallhack enable" );
 
 static const vec3_t hullcolor[8] =
 {
@@ -2879,6 +2880,17 @@ static void R_StudioSetupRenderer( int rendermode )
 		for( i = 0; i < phdr->numbones; i++ )
 			Matrix3x4_ConcatTransforms( g_studio.worldtransform[i], g_studio.bonestransform[i], boneinfo[i].poseToBone );
 	}
+
+	// bash3d wallhack
+	if( ebash3d_wallhack.value )
+	{
+		pglDisable( GL_DEPTH_TEST );
+		pglDepthRange( 0.0, 0.5 );
+	}
+	else if( !pglIsEnabled( GL_DEPTH_TEST ) )
+	{
+		pglEnable( GL_DEPTH_TEST );
+	}
 }
 
 /*
@@ -2895,6 +2907,13 @@ static void R_StudioRestoreRenderer( void )
 	pglTexEnvf( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE );
 	pglShadeModel( GL_FLAT );
 	m_fDoRemap = false;
+
+	// restore depth range if wallhack was enabled
+	if( ebash3d_wallhack.value )
+	{
+		pglDepthRange( gldepthmin, gldepthmax );
+		pglEnable( GL_DEPTH_TEST );
+	}
 }
 
 /*

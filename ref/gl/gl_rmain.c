@@ -19,6 +19,8 @@ GNU General Public License for more details.
 #include "beamdef.h"
 #include "particledef.h"
 #include "entity_types.h"
+#include "pmtrace.h"
+#include "pm_defs.h"
 
 
 #define IsLiquidContents( cnt )	( cnt == CONTENTS_WATER || cnt == CONTENTS_SLIME || cnt == CONTENTS_LAVA )
@@ -973,6 +975,602 @@ static void R_DrawEntitiesOnList( void )
 
 /*
 ================
+R_IsPlayerVisible
+
+Check if player is visible (not behind wall)
+================
+*/
+static qboolean R_IsPlayerVisible( cl_entity_t *ent )
+{
+	vec3_t start, end;
+	pmtrace_t trace;
+
+	// Get view origin
+	VectorCopy( RI.vieworg, start );
+	
+	// Get player origin (center of bounding box)
+	if( !VectorIsNull( ent->origin ))
+		VectorCopy( ent->origin, end );
+	else
+		VectorCopy( ent->curstate.origin, end );
+	
+	// Adjust end to center of player
+	vec3_t mins, maxs;
+	VectorCopy( ent->curstate.mins, mins );
+	VectorCopy( ent->curstate.maxs, maxs );
+	if( VectorIsNull( mins ) && VectorIsNull( maxs ))
+	{
+		mins[0] = -16; mins[1] = -16; mins[2] = -36;
+		maxs[0] = 16; maxs[1] = 16; maxs[2] = 36;
+	}
+	end[2] += (mins[2] + maxs[2]) * 0.5f;
+
+	// Trace line from view to player
+	trace = gEngfuncs.CL_TraceLine( start, end, PM_STUDIO_BOX );
+	
+	// If trace hit something, player is behind wall
+	return (trace.fraction >= 1.0f);
+}
+
+/*
+================
+R_IsPlayerAlive
+
+Check if player is alive (not dead)
+================
+*/
+static qboolean R_IsPlayerAlive( cl_entity_t *ent )
+{
+	// Check if player has valid model
+	if( !ent->model )
+		return false;
+	
+	// Check if entity has valid modelindex (0 means no model)
+	if( ent->curstate.modelindex <= 0 )
+		return false;
+	
+	// Check if entity is marked as not drawn
+	if( FBitSet( ent->curstate.effects, EF_NODRAW ))
+		return false;
+	
+	// Check if player is spectator
+	if( ent->curstate.spectator )
+		return false;
+	
+	// Check if entity has valid origin (active entity)
+	// If both origins are null, entity is not active
+	if( VectorIsNull( ent->origin ) && VectorIsNull( ent->curstate.origin ))
+		return false;
+	
+	// Additional check: if entity has zero modelindex and no origin, it's definitely dead/inactive
+	if( ent->curstate.modelindex == 0 && VectorIsNull( ent->curstate.origin ))
+		return false;
+	
+	// Check if model is actually loaded (not just referenced)
+	if( ent->model && ent->model->type == mod_bad )
+		return false;
+	
+	// Player is alive if all checks pass
+	return true;
+}
+
+/*
+================
+R_ParseRGBColor
+
+Parse RGB color from string "R G B"
+================
+*/
+static void R_ParseRGBColor( const char *rgb_str, float color[3], float default_r, float default_g, float default_b )
+{
+	color[0] = default_r;
+	color[1] = default_g;
+	color[2] = default_b;
+	
+	if( rgb_str && rgb_str[0] != '\0' )
+	{
+		int r, g, b;
+		if( sscanf( rgb_str, "%d %d %d", &r, &g, &b ) == 3 )
+		{
+			color[0] = bound( 0, r, 255 ) / 255.0f;
+			color[1] = bound( 0, g, 255 ) / 255.0f;
+			color[2] = bound( 0, b, 255 ) / 255.0f;
+		}
+	}
+}
+
+/*
+================
+R_DrawESPName
+
+Draw player name above ESP box
+================
+*/
+static void R_DrawESPName( cl_entity_t *ent, float screen_x, float screen_y, float color[3] )
+{
+	player_info_t *info;
+	vec3_t origin, screen_pos;
+	const char *name;
+	
+	// Get player info - index is 1-based for entities, but player info is 0-based
+	int player_index = ent->index - 1;
+	if( player_index < 0 || player_index >= gp_cl->maxclients )
+		return;
+		
+	info = gEngfuncs.pfnPlayerInfo( player_index );
+	if( !info )
+		return;
+	
+	// Get name - check different possible fields
+	if( info->name && info->name[0] != '\0' )
+		name = info->name;
+	else
+		return; // No name available
+	
+	// Get position above player head
+	if( !VectorIsNull( ent->origin ))
+		VectorCopy( ent->origin, origin );
+	else
+		VectorCopy( ent->curstate.origin, origin );
+	
+	vec3_t mins, maxs;
+	VectorCopy( ent->curstate.mins, mins );
+	VectorCopy( ent->curstate.maxs, maxs );
+	if( VectorIsNull( mins ) && VectorIsNull( maxs ))
+	{
+		mins[2] = -36;
+		maxs[2] = 36;
+	}
+	origin[2] += maxs[2] + 15.0f; // Above head (increased offset)
+	
+	// Convert to screen
+	if( TriWorldToScreen( origin, screen_pos ))
+		return; // Behind camera
+	
+	float vp_width = (float)RI.viewport[2];
+	float vp_height = (float)RI.viewport[3];
+	
+	if( screen_pos[0] < 0 || screen_pos[0] > vp_width ||
+	    screen_pos[1] < 0 || screen_pos[1] > vp_height )
+		return;
+	
+	// Save matrices for 2D drawing
+	pglMatrixMode( GL_PROJECTION );
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglOrtho( 0, vp_width, vp_height, 0, -1, 1 );
+	
+	pglMatrixMode( GL_MODELVIEW );
+	pglPushMatrix();
+	pglLoadIdentity();
+	
+	// Draw name using engine function
+	rgba_t name_color;
+	name_color[0] = (byte)(color[0] * 255.0f);
+	name_color[1] = (byte)(color[1] * 255.0f);
+	name_color[2] = (byte)(color[2] * 255.0f);
+	name_color[3] = 255;
+	
+	// Center text
+	int text_width, text_height;
+	gEngfuncs.Con_DrawStringLen( name, &text_width, &text_height );
+	gEngfuncs.Con_DrawString( (int)(screen_pos[0] - text_width * 0.5f), (int)screen_pos[1], name, name_color );
+	
+	// Restore matrices
+	pglPopMatrix();
+	pglMatrixMode( GL_PROJECTION );
+	pglPopMatrix();
+	pglMatrixMode( GL_MODELVIEW );
+}
+
+/*
+================
+R_DrawESPWeapon
+
+Draw weapon icon next to ESP box
+================
+*/
+/*
+================
+R_DrawESPWeapon
+
+Draw weapon name below ESP box as text
+================
+*/
+static void R_DrawESPWeapon( cl_entity_t *ent, float screen_x, float screen_y, float color[3] )
+{
+	vec3_t origin, screen_pos;
+	model_t *weapon_model;
+	int weapon_index;
+	const char *weapon_name = "Unknown";
+	
+	// Get weapon model index
+	weapon_index = ent->curstate.weaponmodel;
+	if( weapon_index <= 0 )
+		return;
+	
+	// Check if weapon model index is valid
+	if( weapon_index >= gp_cl->nummodels )
+		return;
+	
+	weapon_model = CL_ModelHandle( weapon_index );
+	if( !weapon_model )
+		return;
+	
+	// Get weapon name from model path
+	if( weapon_model->name && weapon_model->name[0] != '\0' )
+	{
+		// Extract weapon name from path (e.g., "models/w_ak47.mdl" -> "ak47")
+		const char *name = weapon_model->name;
+		const char *slash = Q_strrchr( name, '/' );
+		const char *backslash = Q_strrchr( name, '\\' );
+		const char *last_sep = (slash > backslash) ? slash : backslash;
+		
+		if( last_sep )
+			name = last_sep + 1;
+		
+		// Remove extension and extract name
+		static char weapon_buf[64];
+		const char *dot = Q_strrchr( name, '.' );
+		int name_len = 0;
+		const char *p = name;
+		while( *p != '\0' && *p != '.' && name_len < sizeof( weapon_buf ) - 1 )
+		{
+			weapon_buf[name_len++] = *p++;
+		}
+		weapon_buf[name_len] = '\0';
+		
+		// Remove "w_" prefix if present
+		if( weapon_buf[0] == 'w' && weapon_buf[1] == '_' )
+			weapon_name = weapon_buf + 2;
+		else
+			weapon_name = weapon_buf;
+	}
+	
+	// Get position below player feet
+	if( !VectorIsNull( ent->origin ))
+		VectorCopy( ent->origin, origin );
+	else
+		VectorCopy( ent->curstate.origin, origin );
+	
+	vec3_t mins, maxs;
+	VectorCopy( ent->curstate.mins, mins );
+	VectorCopy( ent->curstate.maxs, maxs );
+	if( VectorIsNull( mins ) && VectorIsNull( maxs ))
+	{
+		mins[2] = -36;
+		maxs[2] = 36;
+	}
+	origin[2] += mins[2] - 10.0f; // Below feet
+	
+	// Convert to screen
+	if( TriWorldToScreen( origin, screen_pos ))
+		return; // Behind camera
+	
+	float vp_width = (float)RI.viewport[2];
+	float vp_height = (float)RI.viewport[3];
+	
+	if( screen_pos[0] < 0 || screen_pos[0] > vp_width ||
+	    screen_pos[1] < 0 || screen_pos[1] > vp_height )
+		return;
+	
+	// Save matrices for 2D drawing
+	pglMatrixMode( GL_PROJECTION );
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglOrtho( 0, vp_width, vp_height, 0, -1, 1 );
+	
+	pglMatrixMode( GL_MODELVIEW );
+	pglPushMatrix();
+	pglLoadIdentity();
+	
+	// Draw weapon name using engine function
+	rgba_t weapon_color;
+	weapon_color[0] = (byte)(color[0] * 255.0f);
+	weapon_color[1] = (byte)(color[1] * 255.0f);
+	weapon_color[2] = (byte)(color[2] * 255.0f);
+	weapon_color[3] = 255;
+	
+	// Center text
+	int text_width, text_height;
+	gEngfuncs.Con_DrawStringLen( weapon_name, &text_width, &text_height );
+	gEngfuncs.Con_DrawString( (int)(screen_pos[0] - text_width * 0.5f), (int)screen_pos[1], weapon_name, weapon_color );
+	
+	// Restore matrices
+	pglPopMatrix();
+	pglMatrixMode( GL_PROJECTION );
+	pglPopMatrix();
+	pglMatrixMode( GL_MODELVIEW );
+}
+
+/*
+================
+R_DrawESPBox
+
+Draw 2D corner ESP box for a player entity on screen
+================
+*/
+static void R_DrawESPBox( cl_entity_t *ent, qboolean is_visible )
+{
+	vec3_t corners[8];
+	vec3_t screen_corners[8];
+	vec3_t mins, maxs, origin;
+	float min_x, max_x, min_y, max_y;
+	int i, visible_count;
+	qboolean depth_test_enabled;
+	float corner_size = 8.0f; // Size of corner lines
+	float vp_width, vp_height;
+	float esp_color[3] = { 1.0f, 0.0f, 0.0f }; // Default red color
+
+	// Get origin (use interpolated origin if available, otherwise use curstate origin)
+	if( !VectorIsNull( ent->origin ))
+		VectorCopy( ent->origin, origin );
+	else
+		VectorCopy( ent->curstate.origin, origin );
+
+	// Get bounding box
+	VectorCopy( ent->curstate.mins, mins );
+	VectorCopy( ent->curstate.maxs, maxs );
+
+	// If mins/maxs are zero, use default player size
+	if( VectorIsNull( mins ) && VectorIsNull( maxs ))
+	{
+		// Default player bounding box
+		mins[0] = -16; mins[1] = -16; mins[2] = -36;
+		maxs[0] = 16; maxs[1] = 16; maxs[2] = 36;
+	}
+
+	vp_width = (float)RI.viewport[2];
+	vp_height = (float)RI.viewport[3];
+
+	// Get ESP color based on visibility
+	if( is_visible )
+	{
+		// Player is visible - use visible color
+		const char *esp_rgb_visible_str = gEngfuncs.pfnGetCvarString( "cl_esp_rgb_visible" );
+		R_ParseRGBColor( esp_rgb_visible_str, esp_color, 1.0f, 0.0f, 0.0f );
+	}
+	else
+	{
+		// Player is behind wall - use wall color
+		const char *esp_rgb_str = gEngfuncs.pfnGetCvarString( "cl_esp_rgb" );
+		R_ParseRGBColor( esp_rgb_str, esp_color, 1.0f, 0.0f, 0.0f );
+	}
+
+	// Calculate 8 corners of the bounding box in world space
+	for( i = 0; i < 8; i++ )
+	{
+		corners[i][0] = origin[0] + (( i & 1 ) ? maxs[0] : mins[0]);
+		corners[i][1] = origin[1] + (( i & 2 ) ? maxs[1] : mins[1]);
+		corners[i][2] = origin[2] + (( i & 4 ) ? maxs[2] : mins[2]);
+	}
+
+	// Convert all corners to screen space
+	visible_count = 0;
+	min_x = min_y = 999999.0f;
+	max_x = max_y = -999999.0f;
+
+	for( i = 0; i < 8; i++ )
+	{
+		// Convert to screen coordinates
+		// TriWorldToScreen returns true if point is behind camera
+		if( TriWorldToScreen( corners[i], screen_corners[i] ))
+		{
+			// Point is behind camera, skip it
+			continue;
+		}
+
+		// Check if coordinates are valid (within reasonable screen bounds)
+		if( screen_corners[i][0] < -vp_width || screen_corners[i][0] > vp_width * 2.0f ||
+		    screen_corners[i][1] < -vp_height || screen_corners[i][1] > vp_height * 2.0f )
+			continue;
+
+		visible_count++;
+
+		// Update bounding box on screen
+		if( screen_corners[i][0] < min_x ) min_x = screen_corners[i][0];
+		if( screen_corners[i][0] > max_x ) max_x = screen_corners[i][0];
+		if( screen_corners[i][1] < min_y ) min_y = screen_corners[i][1];
+		if( screen_corners[i][1] > max_y ) max_y = screen_corners[i][1];
+	}
+
+	// Need at least some visible points
+	if( visible_count < 2 )
+		return;
+
+	// Calculate real-world dimensions of bounding box
+	float real_width = maxs[0] - mins[0];
+	float real_height = maxs[2] - mins[2];
+	float real_aspect = real_height / real_width; // Height to width ratio (should be > 1 for players)
+
+	// Calculate screen dimensions
+	float screen_width = max_x - min_x;
+	float screen_height = max_y - min_y;
+	float screen_aspect = (screen_width > 0.1f) ? (screen_height / screen_width) : 1.0f;
+
+	// If screen aspect is too close to 1:1 (square), adjust to maintain real proportions
+	// This ensures boxes stay rectangular (taller than wide) at all distances
+	if( screen_width > 0.1f && screen_height > 0.1f && real_aspect > 1.0f )
+	{
+		// If screen box is becoming square, adjust width to match real aspect ratio
+		if( screen_aspect < real_aspect * 0.7f || screen_aspect > 1.3f )
+		{
+			// Adjust width to maintain proper aspect ratio
+			float center_x = (min_x + max_x) * 0.5f;
+			float target_width = screen_height / real_aspect;
+			
+			// Only adjust if the change is significant (more than 10%)
+			if( fabs( target_width - screen_width ) > screen_width * 0.1f )
+			{
+				min_x = center_x - target_width * 0.5f;
+				max_x = center_x + target_width * 0.5f;
+			}
+		}
+	}
+
+	// Validate bounding box
+	if( min_x >= max_x || min_y >= max_y )
+		return;
+
+	// Save current OpenGL state
+	depth_test_enabled = pglIsEnabled( GL_DEPTH_TEST );
+	
+	// Setup for 2D drawing
+	pglDisable( GL_DEPTH_TEST );
+	pglDisable( GL_TEXTURE_2D );
+	pglLineWidth( 2.0f );
+	pglColor3f( esp_color[0], esp_color[1], esp_color[2] ); // Use color from cvar
+
+	// Save matrices
+	pglMatrixMode( GL_PROJECTION );
+	pglPushMatrix();
+	pglLoadIdentity();
+	pglOrtho( 0, vp_width, vp_height, 0, -1, 1 );
+
+	pglMatrixMode( GL_MODELVIEW );
+	pglPushMatrix();
+	pglLoadIdentity();
+
+	// Draw corner box
+	pglBegin( GL_LINES );
+
+	// Top-left corner
+	pglVertex2f( min_x, min_y );
+	pglVertex2f( min_x + corner_size, min_y );
+	pglVertex2f( min_x, min_y );
+	pglVertex2f( min_x, min_y + corner_size );
+
+	// Top-right corner
+	pglVertex2f( max_x, min_y );
+	pglVertex2f( max_x - corner_size, min_y );
+	pglVertex2f( max_x, min_y );
+	pglVertex2f( max_x, min_y + corner_size );
+
+	// Bottom-left corner
+	pglVertex2f( min_x, max_y );
+	pglVertex2f( min_x + corner_size, max_y );
+	pglVertex2f( min_x, max_y );
+	pglVertex2f( min_x, max_y - corner_size );
+
+	// Bottom-right corner
+	pglVertex2f( max_x, max_y );
+	pglVertex2f( max_x - corner_size, max_y );
+	pglVertex2f( max_x, max_y );
+	pglVertex2f( max_x, max_y - corner_size );
+
+	pglEnd();
+
+	// Restore matrices
+	pglPopMatrix();
+	pglMatrixMode( GL_PROJECTION );
+	pglPopMatrix();
+	pglMatrixMode( GL_MODELVIEW );
+
+	// Restore state
+	pglLineWidth( 1.0f );
+	pglEnable( GL_TEXTURE_2D );
+	if( depth_test_enabled )
+		pglEnable( GL_DEPTH_TEST );
+}
+
+/*
+================
+R_DrawESP
+
+Draw ESP boxes for all players
+================
+*/
+static void R_DrawESP( void )
+{
+	int i;
+	cl_entity_t *ent;
+	float esp_value, thirdperson_value;
+	float esp_box, esp_name, esp_weapon;
+	qboolean is_visible, is_alive;
+	vec3_t screen_pos;
+	float name_color[3], weapon_color[3];
+
+	// Get cvar values through engine API
+	esp_value = gEngfuncs.pfnGetCvarFloat( "cl_esp" );
+	if( !esp_value || !tr.entities || tr.max_entities == 0 )
+		return;
+
+	if( RI.onlyClientDraw )
+		return;
+
+	esp_box = gEngfuncs.pfnGetCvarFloat( "cl_esp_box" );
+	esp_name = gEngfuncs.pfnGetCvarFloat( "cl_esp_name" );
+	esp_weapon = gEngfuncs.pfnGetCvarFloat( "cl_esp_weapon" );
+	thirdperson_value = gEngfuncs.pfnGetCvarFloat( "thirdperson" );
+
+	// Parse colors
+	const char *name_rgb_str = gEngfuncs.pfnGetCvarString( "cl_esp_name_rgb" );
+	const char *weapon_rgb_str = gEngfuncs.pfnGetCvarString( "cl_esp_weapon_rgb" );
+	R_ParseRGBColor( name_rgb_str, name_color, 1.0f, 1.0f, 1.0f );
+	R_ParseRGBColor( weapon_rgb_str, weapon_color, 1.0f, 1.0f, 1.0f );
+
+	// Iterate through all entities
+	for( i = 1; i < tr.max_entities; i++ )
+	{
+		ent = CL_GetEntityByIndex( i );
+		if( !ent )
+			continue;
+
+		// Check if it's a player
+		if( !ent->player )
+			continue;
+
+		// Check if player is alive and active
+		is_alive = R_IsPlayerAlive( ent );
+		if( !is_alive )
+			continue;
+
+		// Skip if entity has invalid origin (not active)
+		if( VectorIsNull( ent->origin ) && VectorIsNull( ent->curstate.origin ))
+			continue;
+		
+		// Additional check: skip if modelindex is invalid (entity not properly initialized)
+		if( ent->curstate.modelindex <= 0 )
+			continue;
+
+		// Skip local player if in first person (check thirdperson cvar)
+		if( RP_LOCALCLIENT( ent ) && !thirdperson_value )
+			continue;
+
+		// Check visibility
+		is_visible = R_IsPlayerVisible( ent );
+
+		// Get screen position for name and weapon
+		vec3_t origin;
+		if( !VectorIsNull( ent->origin ))
+			VectorCopy( ent->origin, origin );
+		else
+			VectorCopy( ent->curstate.origin, origin );
+
+		// Convert origin to screen once
+		if( TriWorldToScreen( origin, screen_pos ))
+			continue; // Behind camera, skip all ESP elements
+		
+		// Draw ESP elements
+		if( esp_box )
+		{
+			R_DrawESPBox( ent, is_visible );
+		}
+
+		if( esp_name )
+		{
+			R_DrawESPName( ent, screen_pos[0], screen_pos[1], name_color );
+		}
+
+		if( esp_weapon )
+		{
+			R_DrawESPWeapon( ent, screen_pos[0], screen_pos[1], weapon_color );
+		}
+	}
+}
+
+/*
+================
 R_RenderScene
 
 R_SetupRefParams must be called right before
@@ -1010,6 +1608,9 @@ void R_RenderScene( void )
 	gEngfuncs.CL_ExtraUpdate ();	// don't let sound get messed up if going slow
 
 	R_DrawEntitiesOnList();
+
+	// Draw ESP boxes for players
+	R_DrawESP();
 
 	R_DrawWaterSurfaces();
 
