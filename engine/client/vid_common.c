@@ -222,9 +222,6 @@ void VID_Init( void )
 	// a1ba: planned to be named vid_mode for compability
 	// but supported mode list is filled by backends, so numbers are not portable any more
 	Cmd_AddRestrictedCommand( "vid_setmode", VID_Mode_f, "display video mode" );
-	
-	// Add simple resolution change command for mobile devices
-	Cmd_AddCommand( "setres", VID_Mode_f, "set screen resolution: setres <width> <height>" );
 
 	V_Init(); // init gamma
 	R_Init(); // init renderer
