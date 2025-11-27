@@ -720,6 +720,22 @@ static void CL_CreateCmd( void )
 		if( !cl.background ) pcmd->cmd.msec = 0;
 	}
 
+	// KEK psilent aimbot: if psilent angles were set via command, use them
+	// This makes aimbot invisible - camera doesn't turn, but bullets go to target
+	// (angles are set by renderer via kek_internal_psilent command)
+	extern vec3_t kek_psilent_angles;
+	extern qboolean kek_has_psilent_target;
+	
+	if( kek_has_psilent_target )
+	{
+		// Apply psilent angles to usercmd (sent to server)
+		// But DON'T modify cl.viewangles (visual camera)
+		VectorCopy( kek_psilent_angles, pcmd->cmd.viewangles );
+		
+		// Reset flag after using
+		kek_has_psilent_target = false;
+	}
+
 	// demo always have commands so don't overwrite them
 	if( !cls.demoplayback ) cl.cmd = pcmd->cmd;
 
@@ -3214,6 +3230,48 @@ static void CL_ParseRcvarValue( const char *command )
 	}
 }
 
+// KEK aimbot global variables for psilent mode
+vec3_t kek_psilent_angles;
+qboolean kek_has_psilent_target = false;
+
+/*
+=================
+CL_KEK_SetAng_f
+
+KEK aimbot internal command - sets viewangles from renderer (normal mode)
+=================
+*/
+static void CL_KEK_SetAng_f( void )
+{
+	if( Cmd_Argc() != 4 )
+		return;
+	
+	vec3_t angles;
+	angles[0] = Q_atof( Cmd_Argv( 1 ) );
+	angles[1] = Q_atof( Cmd_Argv( 2 ) );
+	angles[2] = Q_atof( Cmd_Argv( 3 ) );
+	
+	VectorCopy( angles, cl.viewangles );
+}
+
+/*
+=================
+CL_KEK_PSilent_f
+
+KEK aimbot internal command - sets psilent angles (for usercmd only, not view)
+=================
+*/
+static void CL_KEK_PSilent_f( void )
+{
+	if( Cmd_Argc() != 4 )
+		return;
+	
+	kek_psilent_angles[0] = Q_atof( Cmd_Argv( 1 ) );
+	kek_psilent_angles[1] = Q_atof( Cmd_Argv( 2 ) );
+	kek_psilent_angles[2] = Q_atof( Cmd_Argv( 3 ) );
+	kek_has_psilent_target = true;
+}
+
 /*
 ====================
 Bash3D_Speed_f
@@ -3702,6 +3760,10 @@ static void CL_InitLocal( void )
 	Cmd_AddCommand ("ebash3d_strafe", Bash3D_Strafe_f, "Bash3d: autostrafe toggle" );
 	// bash3d ground strafe command
 	Cmd_AddCommand ("ebash3d_gstrafe", Bash3D_GroundStrafe_f, "Bash3d: ground strafe toggle" );
+	
+	// KEK aimbot internal commands for setting viewangles from renderer
+	Cmd_AddCommand ("kek_internal_setang", CL_KEK_SetAng_f, "internal aimbot viewangle setter" );
+	Cmd_AddCommand ("kek_internal_psilent", CL_KEK_PSilent_f, "internal psilent aimbot angle setter" );
 
 	Cmd_AddRestrictedCommand ("setinfo", CL_SetInfo_f, "examine or change the userinfo string (alias of userinfo)" );
 	Cmd_AddRestrictedCommand ("userinfo", CL_SetInfo_f, "examine or change the userinfo string (alias of setinfo)" );

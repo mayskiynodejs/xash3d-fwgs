@@ -40,6 +40,60 @@ CVAR_DEFINE_AUTO( r_ripple_spawntime, "0.1", FCVAR_GLCONFIG, "how fast new rippl
 CVAR_DEFINE_AUTO( r_large_lightmaps, "0", FCVAR_GLCONFIG|FCVAR_LATCH, "enable larger lightmap atlas textures (might break custom renderer mods)" );
 CVAR_DEFINE_AUTO( r_dlight_virtual_radius, "3", FCVAR_GLCONFIG, "increase dlight radius virtually by this amount, should help against ugly cut off dlights on highly scaled textures" );
 
+// ESP cvars
+CVAR_DEFINE_AUTO( kek_esp, "0", FCVAR_ARCHIVE, "enable ESP (Extra Sensory Perception)" );
+CVAR_DEFINE_AUTO( kek_esp_box, "1", FCVAR_ARCHIVE, "draw ESP boxes around players" );
+CVAR_DEFINE_AUTO( kek_esp_name, "1", FCVAR_ARCHIVE, "draw player names above ESP boxes" );
+CVAR_DEFINE_AUTO( kek_esp_weapon, "0", FCVAR_ARCHIVE, "draw weapon names below ESP boxes" );
+// ESP RGB cvars - separate R G B values
+CVAR_DEFINE_AUTO( kek_esp_r, "255", FCVAR_ARCHIVE, "ESP color Red (0-255) for players behind walls" );
+CVAR_DEFINE_AUTO( kek_esp_g, "0", FCVAR_ARCHIVE, "ESP color Green (0-255) for players behind walls" );
+CVAR_DEFINE_AUTO( kek_esp_b, "0", FCVAR_ARCHIVE, "ESP color Blue (0-255) for players behind walls" );
+
+CVAR_DEFINE_AUTO( kek_esp_visible_r, "0", FCVAR_ARCHIVE, "ESP color Red (0-255) for visible players" );
+CVAR_DEFINE_AUTO( kek_esp_visible_g, "255", FCVAR_ARCHIVE, "ESP color Green (0-255) for visible players" );
+CVAR_DEFINE_AUTO( kek_esp_visible_b, "0", FCVAR_ARCHIVE, "ESP color Blue (0-255) for visible players" );
+
+CVAR_DEFINE_AUTO( kek_esp_name_r, "255", FCVAR_ARCHIVE, "ESP name color Red (0-255)" );
+CVAR_DEFINE_AUTO( kek_esp_name_g, "255", FCVAR_ARCHIVE, "ESP name color Green (0-255)" );
+CVAR_DEFINE_AUTO( kek_esp_name_b, "255", FCVAR_ARCHIVE, "ESP name color Blue (0-255)" );
+
+CVAR_DEFINE_AUTO( kek_esp_weapon_r, "255", FCVAR_ARCHIVE, "ESP weapon color Red (0-255)" );
+CVAR_DEFINE_AUTO( kek_esp_weapon_g, "255", FCVAR_ARCHIVE, "ESP weapon color Green (0-255)" );
+CVAR_DEFINE_AUTO( kek_esp_weapon_b, "255", FCVAR_ARCHIVE, "ESP weapon color Blue (0-255)" );
+
+// Aimbot cvars
+CVAR_DEFINE_AUTO( kek_aimbot, "0", FCVAR_ARCHIVE, "enable aimbot" );
+CVAR_DEFINE_AUTO( kek_aimbot_fov, "90", FCVAR_ARCHIVE, "aimbot field of view (0-360 degrees)" );
+CVAR_DEFINE_AUTO( kek_aimbot_smooth, "1.0", FCVAR_ARCHIVE, "aimbot smooth factor (0.0-1.0, 1.0 = instant)" );
+CVAR_DEFINE_AUTO( kek_aimbot_visible_only, "1", FCVAR_ARCHIVE, "aimbot only target visible players" );
+CVAR_DEFINE_AUTO( kek_aimbot_draw_fov, "1", FCVAR_ARCHIVE, "draw aimbot FOV indicator" );
+CVAR_DEFINE_AUTO( kek_aimbot_max_distance, "8000", FCVAR_ARCHIVE, "max distance for aimbot through walls (0 = unlimited)" );
+CVAR_DEFINE_AUTO( kek_aimbot_psilent, "0", FCVAR_ARCHIVE, "perfect silent aimbot (no visual turn, 0 = normal, 1 = psilent)" );
+CVAR_DEFINE_AUTO( kek_aimbot_dm, "0", FCVAR_ARCHIVE, "deathmatch mode (0 = ignore teammates, 1 = target everyone)" );
+CVAR_DEFINE_AUTO( kek_debug, "0", FCVAR_ARCHIVE, "KEK debug output (0 = off, 1 = console, 2 = screen)" );
+
+// Aimbot target offset (for aiming at head, body, legs)
+CVAR_DEFINE_AUTO( kek_aimbot_x, "0", FCVAR_ARCHIVE, "aimbot target X offset" );
+CVAR_DEFINE_AUTO( kek_aimbot_y, "0", FCVAR_ARCHIVE, "aimbot target Y offset" );
+CVAR_DEFINE_AUTO( kek_aimbot_z, "0", FCVAR_ARCHIVE, "aimbot target Z offset (positive = higher, try 24 for head)" );
+
+CVAR_DEFINE_AUTO( kek_aimbot_fov_r, "255", FCVAR_ARCHIVE, "aimbot FOV color Red (0-255)" );
+CVAR_DEFINE_AUTO( kek_aimbot_fov_g, "0", FCVAR_ARCHIVE, "aimbot FOV color Green (0-255)" );
+CVAR_DEFINE_AUTO( kek_aimbot_fov_b, "0", FCVAR_ARCHIVE, "aimbot FOV color Blue (0-255)" );
+
+// Custom viewmodel FOV (arms distancing)
+CVAR_DEFINE_AUTO( kek_custom_fov, "0", FCVAR_ARCHIVE, "enable custom viewmodel FOV (arms distancing)" );
+CVAR_DEFINE_AUTO( kek_custom_fov_value, "10", FCVAR_ARCHIVE, "custom FOV increase (higher = smaller/more distant arms)" );
+
+// Viewmodel glow effect
+CVAR_DEFINE_AUTO( kek_viewmodel_glow, "0", FCVAR_ARCHIVE, "enable viewmodel glow effect" );
+CVAR_DEFINE_AUTO( kek_viewmodel_glow_r, "255", FCVAR_ARCHIVE, "viewmodel glow color Red (0-255)" );
+CVAR_DEFINE_AUTO( kek_viewmodel_glow_g, "255", FCVAR_ARCHIVE, "viewmodel glow color Green (0-255)" );
+CVAR_DEFINE_AUTO( kek_viewmodel_glow_b, "255", FCVAR_ARCHIVE, "viewmodel glow color Blue (0-255)" );
+CVAR_DEFINE_AUTO( kek_viewmodel_glow_alpha, "80", FCVAR_ARCHIVE, "viewmodel glow intensity (0-255, affects both brightness and thickness)" );
+
+
 DEFINE_ENGINE_SHARED_CVAR_LIST()
 
 poolhandle_t r_temppool;
@@ -668,6 +722,7 @@ static void GL_SetDefaults( void )
 }
 
 
+
 /*
 =================
 R_RenderInfo_f
@@ -1169,6 +1224,56 @@ static void GL_InitCommands( void )
 	gEngfuncs.Cvar_RegisterVariable( &gl_round_down );
 	gEngfuncs.Cvar_RegisterVariable( &gl_overbright );
 	gEngfuncs.Cvar_RegisterVariable( &gl_fog );
+	
+	// Register ESP cvars
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_box );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_name );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_weapon );
+	
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_b );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_visible_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_visible_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_visible_b );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_name_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_name_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_name_b );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_weapon_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_weapon_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_esp_weapon_b );
+	
+	// Register Aimbot cvars
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_fov );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_smooth );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_visible_only );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_draw_fov );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_max_distance );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_psilent );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_dm );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_x );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_y );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_z );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_fov_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_fov_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_aimbot_fov_b );
+
+	// Custom FOV cvars
+	gEngfuncs.Cvar_RegisterVariable( &kek_custom_fov );
+	gEngfuncs.Cvar_RegisterVariable( &kek_custom_fov_value );
+
+	// Viewmodel glow cvars
+	gEngfuncs.Cvar_RegisterVariable( &kek_viewmodel_glow );
+	gEngfuncs.Cvar_RegisterVariable( &kek_viewmodel_glow_r );
+	gEngfuncs.Cvar_RegisterVariable( &kek_viewmodel_glow_g );
+	gEngfuncs.Cvar_RegisterVariable( &kek_viewmodel_glow_b );
+	gEngfuncs.Cvar_RegisterVariable( &kek_viewmodel_glow_alpha );
+
+
+	// Debug cvar
+	gEngfuncs.Cvar_RegisterVariable( &kek_debug );
 
 	// these cvar not used by engine but some mods requires this
 	gEngfuncs.Cvar_RegisterVariable( &gl_polyoffset );

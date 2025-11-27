@@ -34,7 +34,7 @@ static CVAR_DEFINE_AUTO( cl_showfps, "0", FCVAR_ARCHIVE, "show client fps" );
 static CVAR_DEFINE_AUTO( cl_showpos, "0", FCVAR_ARCHIVE, "show local player position and velocity" );
 static CVAR_DEFINE_AUTO( cl_showents, "0", FCVAR_ARCHIVE | FCVAR_CHEAT, "show entities information (largely undone)" );
 static CVAR_DEFINE_AUTO( cl_showcmd, "0", 0, "visualize usercmd button presses" );
-static CVAR_DEFINE_AUTO( cl_debug, "0", FCVAR_ARCHIVE, "show client debug info (0=off, 1=minimal, 2=current client, 3=all clients)" );
+static CVAR_DEFINE_AUTO( cl_debug, "0", FCVAR_ARCHIVE, "show client debug info (0=off, 1=minimal, 2=current client, 3=all clients, 4=KEK aim stats)" );
 CVAR_DEFINE_AUTO( thirdperson, "0", FCVAR_ARCHIVE, "enable thirdperson camera view" );
 
 typedef struct
@@ -253,6 +253,13 @@ void SCR_DrawDebug( void )
 
 	xpos = (int)(refState.width / 1.4f);
 	line_height = font->charHeight + 2;
+
+	if( debug_mode >= 4 )
+	{
+		// KEK рендерер сам выводит подробный HUD при cl_debug 4,
+		// поэтому здесь ничего не рисуем, чтобы не мешать его информации.
+		return;
+	}
 	
 	// Generate random FPS value between 698-701 using framecount for pseudo-randomness
 	fps = (float)((host.framecount + (int)(host.realtime * 1000.0)) % 4) + 698.0f;
