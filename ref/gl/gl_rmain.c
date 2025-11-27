@@ -2133,7 +2133,7 @@ static void kek_SmoothAim( const vec3_t target_angles, vec3_t current_angles, fl
 ================
 kek_DrawAimbotFOV
 
-Draw FOV circle in form of swastika 卐
+Draw FOV circle
 ================
 */
 static void kek_DrawAimbotFOV( void )
@@ -2192,63 +2192,18 @@ static void kek_DrawAimbotFOV( void )
 	pglPushMatrix();
 	pglLoadIdentity();
 	
-	// Draw swastika pattern 卐
-	// This is a 4-armed cross pattern with bent arms
-	pglBegin( GL_LINES );
-	
-	// Calculate arm dimensions
-	float arm_length = radius * 0.6f;
-	float arm_width = radius * 0.2f;
-	float bend_length = radius * 0.3f;
-	
-	// Draw 4 arms of swastika (rotated 45 degrees)
-	for( i = 0; i < 4; i++ )
-	{
-		float base_angle = (i * 90.0f + 45.0f) * M_PI_F / 180.0f;
-		float cos_base = cos( base_angle );
-		float sin_base = sin( base_angle );
-		
-		// Start point (near center)
-		float x_start = center_x + cos_base * arm_width;
-		float y_start = center_y + sin_base * arm_width;
-		
-		// End point of main arm
-		float x_mid = center_x + cos_base * arm_length;
-		float y_mid = center_y + sin_base * arm_length;
-		
-		// Draw main arm
-		pglVertex2f( x_start, y_start );
-		pglVertex2f( x_mid, y_mid );
-		
-		// Calculate perpendicular direction for bent part
-		float perp_angle = base_angle + M_PI_F / 2.0f;
-		float cos_perp = cos( perp_angle );
-		float sin_perp = sin( perp_angle );
-		
-		// End point of bent arm
-		float x_end = x_mid + cos_perp * bend_length;
-		float y_end = y_mid + sin_perp * bend_length;
-		
-		// Draw bent part
-		pglVertex2f( x_mid, y_mid );
-		pglVertex2f( x_end, y_end );
-	}
-	
-	// Draw outer circle
+	// Draw simple circle
+	pglBegin( GL_LINE_LOOP );
+
 	for( i = 0; i < segments; i++ )
 	{
-		float angle1 = (i * 360.0f / segments) * M_PI_F / 180.0f;
-		float angle2 = ((i + 1) * 360.0f / segments) * M_PI_F / 180.0f;
-		
-		float x1 = center_x + cos( angle1 ) * radius;
-		float y1 = center_y + sin( angle1 ) * radius;
-		float x2 = center_x + cos( angle2 ) * radius;
-		float y2 = center_y + sin( angle2 ) * radius;
-		
-		pglVertex2f( x1, y1 );
-		pglVertex2f( x2, y2 );
+		float angle = (i * 360.0f / segments) * M_PI_F / 180.0f;
+		float x = center_x + cos( angle ) * radius;
+		float y = center_y + sin( angle ) * radius;
+
+		pglVertex2f( x, y );
 	}
-	
+
 	pglEnd();
 	
 	// Restore matrices
