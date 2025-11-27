@@ -34,6 +34,9 @@ extern cvar_t kek_esp_box;
 extern cvar_t kek_esp_name;
 extern cvar_t kek_esp_weapon;
 
+// External function from gl_context.c
+extern void CL_FillRGBA( int rendermode, float _x, float _y, float _w, float _h, byte r, byte g, byte b, byte a );
+
 extern cvar_t kek_esp_r;
 extern cvar_t kek_esp_g;
 extern cvar_t kek_esp_b;
@@ -1704,7 +1707,6 @@ static void kek_DrawESPBox( cl_entity_t *ent, qboolean is_visible )
 	float min_x, max_x, min_y, max_y;
 	int i, visible_count;
 	qboolean depth_test_enabled;
-	float corner_size = 8.0f; // Size of corner lines
 	float vp_width, vp_height;
 	float esp_color[3] = { 1.0f, 0.0f, 0.0f }; // Default red color
 
@@ -1818,14 +1820,21 @@ static void kek_DrawESPBox( cl_entity_t *ent, qboolean is_visible )
 	if( min_x >= max_x || min_y >= max_y )
 		return;
 
+	// Draw corner box using OpenGL lines (like original implementation)
+	int corner_length = (int)((max_x - min_x < max_y - min_y ? max_x - min_x : max_y - min_y) / 4.0f);
+	if (corner_length < 5) corner_length = 5;
+	if (corner_length > 20) corner_length = 20;
+
 	// Save current OpenGL state
 	depth_test_enabled = pglIsEnabled( GL_DEPTH_TEST );
-	
+
 	// Setup for 2D drawing
 	pglDisable( GL_DEPTH_TEST );
 	pglDisable( GL_TEXTURE_2D );
-	pglLineWidth( 2.0f );
-	pglColor3f( esp_color[0], esp_color[1], esp_color[2] ); // Use color from cvar
+	pglEnable( GL_BLEND );
+	pglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	pglLineWidth( 1.0f ); // Thin lines for mobile compatibility
+	pglColor4f( esp_color[0], esp_color[1], esp_color[2], 1.0f );
 
 	// Save matrices
 	pglMatrixMode( GL_PROJECTION );
@@ -1842,27 +1851,27 @@ static void kek_DrawESPBox( cl_entity_t *ent, qboolean is_visible )
 
 	// Top-left corner
 	pglVertex2f( min_x, min_y );
-	pglVertex2f( min_x + corner_size, min_y );
+	pglVertex2f( min_x + corner_length, min_y );
 	pglVertex2f( min_x, min_y );
-	pglVertex2f( min_x, min_y + corner_size );
+	pglVertex2f( min_x, min_y + corner_length );
 
 	// Top-right corner
 	pglVertex2f( max_x, min_y );
-	pglVertex2f( max_x - corner_size, min_y );
+	pglVertex2f( max_x - corner_length, min_y );
 	pglVertex2f( max_x, min_y );
-	pglVertex2f( max_x, min_y + corner_size );
+	pglVertex2f( max_x, min_y + corner_length );
 
 	// Bottom-left corner
 	pglVertex2f( min_x, max_y );
-	pglVertex2f( min_x + corner_size, max_y );
+	pglVertex2f( min_x + corner_length, max_y );
 	pglVertex2f( min_x, max_y );
-	pglVertex2f( min_x, max_y - corner_size );
+	pglVertex2f( min_x, max_y - corner_length );
 
 	// Bottom-right corner
 	pglVertex2f( max_x, max_y );
-	pglVertex2f( max_x - corner_size, max_y );
+	pglVertex2f( max_x - corner_length, max_y );
 	pglVertex2f( max_x, max_y );
-	pglVertex2f( max_x, max_y - corner_size );
+	pglVertex2f( max_x, max_y - corner_length );
 
 	pglEnd();
 
@@ -1874,9 +1883,12 @@ static void kek_DrawESPBox( cl_entity_t *ent, qboolean is_visible )
 
 	// Restore state
 	pglLineWidth( 1.0f );
+	pglDisable( GL_BLEND );
 	pglEnable( GL_TEXTURE_2D );
 	if( depth_test_enabled )
 		pglEnable( GL_DEPTH_TEST );
+
+	// No OpenGL state restoration needed - using FillRGBABlend
 }
 
 /*
@@ -2133,7 +2145,7 @@ static void kek_SmoothAim( const vec3_t target_angles, vec3_t current_angles, fl
 ================
 kek_DrawAimbotFOV
 
-Draw FOV swastika 卐
+Draw FOV circle (like in eBash3D)
 ================
 */
 static void kek_DrawAimbotFOV( void )
@@ -2144,13 +2156,11 @@ static void kek_DrawAimbotFOV( void )
 	float center_x, center_y;
 	float radius;
 	int segments = 64;
-	int i;
-	qboolean depth_test_enabled;
 	
 	// Get cvar values
 	fov_value = kek_aimbot_fov.value;
 	fov_draw = kek_aimbot_draw_fov.value;
-	
+
 	if( !fov_draw || fov_value <= 0.0f )
 		return;
 	
@@ -2173,14 +2183,17 @@ static void kek_DrawAimbotFOV( void )
 	if( radius > vp_width * 0.5f )
 		radius = vp_width * 0.5f;
 	
-	// Save OpenGL state
-	depth_test_enabled = pglIsEnabled( GL_DEPTH_TEST );
-	
+	// Draw FOV circle using OpenGL lines
+	// Save current OpenGL state
+	qboolean depth_test_enabled = pglIsEnabled( GL_DEPTH_TEST );
+
 	// Setup for 2D drawing
 	pglDisable( GL_DEPTH_TEST );
 	pglDisable( GL_TEXTURE_2D );
-	pglLineWidth( 1.0f ); // Thinner lines for mobile compatibility
-	pglColor3f( fov_color[0], fov_color[1], fov_color[2] );
+	pglEnable( GL_BLEND );
+	pglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	pglLineWidth( 1.0f ); // Thin lines for mobile compatibility
+	pglColor4f( fov_color[0], fov_color[1], fov_color[2], 0.7f ); // Semi-transparent
 
 	// Save matrices
 	pglMatrixMode( GL_PROJECTION );
@@ -2192,9 +2205,9 @@ static void kek_DrawAimbotFOV( void )
 	pglPushMatrix();
 	pglLoadIdentity();
 
-	// Draw outer circle first
+	// Draw outer circle
 	pglBegin( GL_LINE_LOOP );
-	for( i = 0; i < segments; i++ )
+	for( int i = 0; i < segments; i++ )
 	{
 		float angle = (i * 360.0f / segments) * M_PI_F / 180.0f;
 		float x = center_x + cos( angle ) * radius;
@@ -2203,58 +2216,15 @@ static void kek_DrawAimbotFOV( void )
 	}
 	pglEnd();
 
-	// Draw swastika pattern 卐 inside the circle
-	pglBegin( GL_LINES );
-
-	// Calculate swastika size (smaller than circle radius)
-	float swastika_radius = radius * 0.7f; // 70% of circle radius
-	float arm_length = swastika_radius * 0.5f;
-	float arm_width = swastika_radius * 0.15f;
-	float bend_length = swastika_radius * 0.25f;
-
-	// Draw 4 arms of swastika (proper 卐 orientation)
-	for( i = 0; i < 4; i++ )
-	{
-		float base_angle = (i * 90.0f) * M_PI_F / 180.0f; // No offset for proper 卐 orientation
-		float cos_base = cos( base_angle );
-		float sin_base = sin( base_angle );
-
-		// Start point (near center)
-		float x_start = center_x + cos_base * arm_width;
-		float y_start = center_y + sin_base * arm_width;
-
-		// End point of main arm
-		float x_mid = center_x + cos_base * arm_length;
-		float y_mid = center_y + sin_base * arm_length;
-
-		// Draw main arm
-		pglVertex2f( x_start, y_start );
-		pglVertex2f( x_mid, y_mid );
-
-		// For proper 卐 swastika, bend each arm clockwise (right side)
-		float perp_angle = base_angle + M_PI_F / 2.0f; // Clockwise bend for 卐
-		float cos_perp = cos( perp_angle );
-		float sin_perp = sin( perp_angle );
-
-		// End point of bent arm
-		float x_end = x_mid + cos_perp * bend_length;
-		float y_end = y_mid + sin_perp * bend_length;
-
-		// Draw bent part
-		pglVertex2f( x_mid, y_mid );
-		pglVertex2f( x_end, y_end );
-	}
-
-	pglEnd();
-	
 	// Restore matrices
 	pglPopMatrix();
 	pglMatrixMode( GL_PROJECTION );
 	pglPopMatrix();
 	pglMatrixMode( GL_MODELVIEW );
-	
+
 	// Restore state
 	pglLineWidth( 1.0f );
+	pglDisable( GL_BLEND );
 	pglEnable( GL_TEXTURE_2D );
 	if( depth_test_enabled )
 		pglEnable( GL_DEPTH_TEST );
@@ -2277,7 +2247,7 @@ kek_ConsoleAimbotDebug
 static void kek_ConsoleAimbotDebug( void )
 {
 	// Консольный вывод отключен - используем HUD отображение
-	return;
+		return;
 
 	// Показываем статус aimbot в консоли
 	if( !kek_aimbot.value )
@@ -2591,7 +2561,7 @@ static void kek_Aimbot( ref_viewpass_t *rvp )
 		{
 			// Allow SOLID_NOT players as targets (anti-cheat bypass)
 			if( ent->curstate.solid != SOLID_NOT )
-				continue;
+			continue;
 		}
 		
 		// Skip local player
