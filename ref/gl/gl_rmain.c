@@ -2133,7 +2133,7 @@ static void kek_SmoothAim( const vec3_t target_angles, vec3_t current_angles, fl
 ================
 kek_DrawAimbotFOV
 
-Draw FOV circle
+Draw FOV swastika 卐
 ================
 */
 static void kek_DrawAimbotFOV( void )
@@ -2179,29 +2179,70 @@ static void kek_DrawAimbotFOV( void )
 	// Setup for 2D drawing
 	pglDisable( GL_DEPTH_TEST );
 	pglDisable( GL_TEXTURE_2D );
-	pglLineWidth( 2.0f );
+	pglLineWidth( 1.0f ); // Thinner lines for mobile compatibility
 	pglColor3f( fov_color[0], fov_color[1], fov_color[2] );
-	
+
 	// Save matrices
 	pglMatrixMode( GL_PROJECTION );
 	pglPushMatrix();
 	pglLoadIdentity();
 	pglOrtho( 0, vp_width, vp_height, 0, -1, 1 );
-	
+
 	pglMatrixMode( GL_MODELVIEW );
 	pglPushMatrix();
 	pglLoadIdentity();
-	
-	// Draw simple circle
-	pglBegin( GL_LINE_LOOP );
 
+	// Draw outer circle first
+	pglBegin( GL_LINE_LOOP );
 	for( i = 0; i < segments; i++ )
 	{
 		float angle = (i * 360.0f / segments) * M_PI_F / 180.0f;
 		float x = center_x + cos( angle ) * radius;
 		float y = center_y + sin( angle ) * radius;
-
 		pglVertex2f( x, y );
+	}
+	pglEnd();
+
+	// Draw swastika pattern 卐 inside the circle
+	pglBegin( GL_LINES );
+
+	// Calculate swastika size (smaller than circle radius)
+	float swastika_radius = radius * 0.7f; // 70% of circle radius
+	float arm_length = swastika_radius * 0.5f;
+	float arm_width = swastika_radius * 0.15f;
+	float bend_length = swastika_radius * 0.25f;
+
+	// Draw 4 arms of swastika (proper 卐 orientation)
+	for( i = 0; i < 4; i++ )
+	{
+		float base_angle = (i * 90.0f) * M_PI_F / 180.0f; // No offset for proper 卐 orientation
+		float cos_base = cos( base_angle );
+		float sin_base = sin( base_angle );
+
+		// Start point (near center)
+		float x_start = center_x + cos_base * arm_width;
+		float y_start = center_y + sin_base * arm_width;
+
+		// End point of main arm
+		float x_mid = center_x + cos_base * arm_length;
+		float y_mid = center_y + sin_base * arm_length;
+
+		// Draw main arm
+		pglVertex2f( x_start, y_start );
+		pglVertex2f( x_mid, y_mid );
+
+		// For proper 卐 swastika, bend each arm clockwise (right side)
+		float perp_angle = base_angle + M_PI_F / 2.0f; // Clockwise bend for 卐
+		float cos_perp = cos( perp_angle );
+		float sin_perp = sin( perp_angle );
+
+		// End point of bent arm
+		float x_end = x_mid + cos_perp * bend_length;
+		float y_end = y_mid + sin_perp * bend_length;
+
+		// Draw bent part
+		pglVertex2f( x_mid, y_mid );
+		pglVertex2f( x_end, y_end );
 	}
 
 	pglEnd();
