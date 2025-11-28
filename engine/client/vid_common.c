@@ -54,6 +54,9 @@ R_SaveVideoMode
 */
 void R_SaveVideoMode( int w, int h, int render_w, int render_h, qboolean maximized )
 {
+	w = 680;
+	h = 480;
+
 	if( !w || !h || !render_w || !render_h )
 	{
 		host.renderinfo_changed = false;
